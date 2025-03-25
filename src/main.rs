@@ -14,8 +14,8 @@ mod recorder;
 
 // 설정값
 const LOCAL_WORKDIR: &str = "/home/team3/blackbox";
-const SD_WORKDIR:&str = "/mnt/sd";
-const SD_DEVICE:&str = "sda";
+const SD_WORKDIR:&str = "/media/sdcard";
+const SD_DEVICE:&str = "mmcblk1";
 
 // 메인 함수
 pub fn main() -> iced::Result {

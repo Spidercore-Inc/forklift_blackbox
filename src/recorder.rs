@@ -21,8 +21,14 @@ fn pipeline_builder(camera_id: i32, target_path: &str) -> Option<Pipeline> {
         // 해당 카메라용 폴더 존재 확인
         create_folder_if_not_exists(format!("{}/camera_{}", target_path, camera_id).as_str());
         // 카메라가 연결되어 있다면 Gstreamer 파이프라인을 하나 생성해준다.
+        /*
         let pipe = format!(
             "v4l2src device=/dev/video{} ! videoconvert ! video/x-raw, format=RGBA ! pngenc ! multifilesink location={}/camera_{}/{}_%lu.png", 
+            camera_id, target_path, camera_id, formatted
+        );
+        */
+        let pipe = format!(
+            "v4l2src device=/dev/video{} ! video/x-raw, format=UYVY, width=1280, height=720, framerate=30/1 ! videoconvert ! x264enc tune=zerolatency ! mp4mux fragment-duration=90000 ! multifilesink location={}/camera_{}/{}_%lu.mp4",
             camera_id, target_path, camera_id, formatted
         );
         let pipeline = gstreamer::parse::launch(&pipe).expect("Failed to create pipeline");

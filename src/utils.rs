@@ -53,7 +53,7 @@ pub fn check_sd_insertion() -> Message {
 // 현재 SD카드의 포맷 방식을 확인하는 함수
 pub fn check_sd_format() -> String {
     let output = std::process::Command::new("sudo")
-        .arg("blkid").arg(format!("/dev/{}1", SD_DEVICE))
+        .arg("blkid").arg(format!("/dev/{}p1", SD_DEVICE))
         .output().expect("Failed to execute blkid with sudo");
     if output.status.success() {
         let output_str = String::from_utf8(output.stdout).expect("Invalid UTF-8 output");
@@ -67,7 +67,7 @@ pub fn check_sd_format() -> String {
 
 // SD 카드를 마운트 하는 함수
 pub fn mount_sd_card(fs_type: &str) -> std::io::Result<()> {
-    println!("Mount SD card /dev/{}1 to {}", SD_DEVICE ,SD_WORKDIR);
+    println!("Mount SD card /dev/{}p1 to {}", SD_DEVICE ,SD_WORKDIR);
     // 마운트할 위치 확인
     create_folder_if_not_exists(SD_WORKDIR);
 
@@ -83,14 +83,14 @@ pub fn mount_sd_card(fs_type: &str) -> std::io::Result<()> {
 
     // 확장자에 따라서 마운트하기
     std::process::Command::new("mount")
-        .arg("-t").arg(fs_type).arg(format!("/dev/{}1", SD_DEVICE)).arg(SD_WORKDIR).output()?;
+        .arg("-t").arg(fs_type).arg(format!("/dev/{}p1", SD_DEVICE)).arg(SD_WORKDIR).output()?;
     
     Ok(())
 }
 
 // SD 카드 용량을 확인하는 함수
 pub fn check_target_space(target_disk: Device) -> (u64, u64) {
-    let sd_target = format!("/dev/{}1", SD_DEVICE);
+    let sd_target = format!("/dev/{}p1", SD_DEVICE);
     let _target_disk = match target_disk {
         Device::Local => { "/dev/mmcblk0p1" },
         Device::SD => { &sd_target }
