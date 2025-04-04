@@ -1,8 +1,17 @@
+use fakesink_handler::fakesink_handler;
+use gstreamer::prelude::*;
+
 use iced::{executor, Application, Theme};
 use iced::widget::{container, column, row, text, image::{Image, Handle}, progress_bar, space};
-use recorder::{recorder_thread, RecorderState};
+use recorder::{encoder_thread, pipe_builder, RecorderState};
 use tokio::sync::mpsc;
+use std::collections::VecDeque;
+use std::sync::RwLock;
 use std::{thread, cell::RefCell, sync::{Arc, Mutex, Condvar}};
+
+mod fakesink_handler;
+mod logger;
+use logger::{errorlog, init_logger, setup_panic_hook};
 
 mod utils;
 use utils::*;
@@ -90,6 +99,11 @@ impl iced::Application for BlackBox {
         let window_id = iced::window::Id::unique();
         let _ = iced::window::change_mode::<Self::Message>(window_id, iced::window::Mode::Fullscreen);
 
+        // 로거 세팅
+        init_logger();
+        setup_panic_hook();
+        log::info!("\n&&&& Program Started!\n");
+
         // 쓰레드들에서 Subscription으로 보낼 MPSC 메시지 통로 개설
         let (mpsc_tx, mpsc_rx) = mpsc::unbounded_channel::<SubEvent>();
         let mpsc_tx = Arc::new(Mutex::new(mpsc_tx));
@@ -110,11 +124,36 @@ impl iced::Application for BlackBox {
 
         // Recorder 관련된 스레드 생성
         let r_condvar = Arc::new((Mutex::new(RecorderState::Stop), Condvar::new()));
+        let m_condvar = Arc::new(Condvar::new());
         let recorder_tx = Arc::clone(&mpsc_tx);
-        let recorder_condvar = Arc::clone(&r_condvar);
-        thread::spawn(move || {
-            recorder_thread(recorder_tx, recorder_condvar);
+        let frame_buffer = Arc::new(Mutex::new(VecDeque::<gstreamer::Buffer>::new()));
+        let end_timestamp = Arc::new(RwLock::new(chrono::Utc::now()));
+
+        let r_cd_clone = Arc::clone(&r_condvar);
+        let m_cd_clone = Arc::clone(&m_condvar);
+        let fb_clone = Arc::clone(&frame_buffer);
+        let et_clone = Arc::clone(&end_timestamp);
+        thread::spawn(move || encoder_thread(&recorder_tx, &fb_clone, &et_clone, r_cd_clone, &m_cd_clone));
+
+        // 파이프라인 생성
+        gstreamer::init().unwrap();
+        let pipeline = pipe_builder();
+
+        // FakeSink Handoff Handler 생성
+        let fakesink = pipeline.by_name("fakesink").expect("fakesink element not found");
+
+        // 동영상 담을 프레임 버퍼
+        let frame_buffer_clone = Arc::clone(&frame_buffer);
+        let end_timestamp_clone = Arc::clone(&end_timestamp);
+        let condvar_clone = Arc::clone(&m_condvar);
+        let record = Arc::new(Mutex::new(false));
+        let record_clone = Arc::clone(&record);
+
+        fakesink.connect("handoff", false, move |value| {
+            // 버퍼 처리
+            fakesink_handler(value, &frame_buffer_clone, &end_timestamp_clone, &condvar_clone, &record_clone)
         });
+
 
         (
             Self {

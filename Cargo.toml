@@ -15,3 +15,6 @@ gstreamer-base = { package = "gstreamer-base", git = "https://gitlab.freedesktop
 gstreamer-video = { package = "gstreamer-video", git = "https://gitlab.freedesktop.org/gstreamer/gstreamer-rs" }
 gstreamer-app = { package = "gstreamer-app", git = "https://gitlab.freedesktop.org/gstreamer/gstreamer-rs" }
 chrono = "0.4.39"
+log = "0.4.22"
+simplelog = "0.12.2"
+time = "0.3.37"
