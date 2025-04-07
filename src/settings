@@ -1,10 +1,10 @@
-nvurisrcbin uri="file:///home/spidercore/usb/sample.mp4" gpu-id=0 type=1 ! queue ! m.sink_0 \
-nvurisrcbin uri="file:///home/spidercore/usb/sample.mp4" gpu-id=0 type=1 ! queue ! m.sink_1 \
-nvurisrcbin uri="file:///home/spidercore/usb/sample.mp4" gpu-id=0 type=1 ! queue ! m.sink_2 \
-nvurisrcbin uri="file:///home/spidercore/usb/sample.mp4" gpu-id=0 type=1 ! queue ! m.sink_3 \
+nvurisrcbin uri="file:///home/team3/sample.mp4" gpu-id=0 type=1 ! queue ! m.sink_0 \
+nvurisrcbin uri="file:///home/team3/sample.mp4" gpu-id=0 type=1 ! queue ! m.sink_1 \
+nvurisrcbin uri="file:///home/team3/sample.mp4" gpu-id=0 type=1 ! queue ! m.sink_2 \
+nvurisrcbin uri="file:///home/team3/sample.mp4" gpu-id=0 type=1 ! queue ! m.sink_3 \
 nvstreammux name=m gpu-id=0 batch-size=4 nvbuf-memory-type=0 batched-push-timeout=40000 width=1280 height=720 enable-padding=0 interpolation-method=0 ! queue ! \
 nvstreamdemux name=dem \
-dem.src_0 ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink signal-handoffs=true \
-dem.src_1 ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink signal-handoffs=true \
-dem.src_2 ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink signal-handoffs=true \
-dem.src_3 ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink signal-handoffs=true
+dem.src_0 ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink_0 signal-handoffs=true \
+dem.src_1 ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink_1 signal-handoffs=true \
+dem.src_2 ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink_2 signal-handoffs=true \
+dem.src_3 ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink_3 signal-handoffs=true

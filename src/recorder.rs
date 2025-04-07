@@ -64,8 +64,8 @@ fn buffer_to_mp4(buffers: VecDeque<gstreamer::Buffer>, target_folder: &str) {
     appsrc.end_of_stream().unwrap_or_else(|e| errorlog("Failed to send EOS to appsrc", Some(e)));
 
     // mp4 파일 포맷 변환 후 저장
-    let temp_path = format!("{}{}", target_folder.clone(), "/temp.mp4");
-    let video_path = format!("{}{}", target_folder.clone(), "/video.mp4");
+    let temp_path = format!("{}{}", target_folder, "/temp.mp4");
+    let video_path = format!("{}{}", target_folder, "/video.mp4");
     let output = Command::new("ffmpeg").arg("-i").arg(&temp_path.to_string()).arg("-c:v").arg("h264_nvmpi").arg("-pix_fmt").arg("yuv420p").arg("-preset").arg("fast").arg(&video_path.to_string()).output().unwrap_or_else(|e| errorlog("Failed to excute ffmpeg", Some(e)));
 
     if !output.status.success() {
@@ -155,7 +155,7 @@ pub fn encoder_thread(pipe_tx: &Arc<Mutex<mpsc::UnboundedSender<SubEvent>>> ,fra
                 let timestamp = start_time.timestamp_millis().to_string();
 
                 // 파일 저장 경로: <workingDir>/<timestamp>/video.mp4
-                let target_folder = format!("{}{}", save_dir.clone(), &timestamp);
+                let target_folder = format!("{}/{}", save_dir, &timestamp);
                 info!("SubThread: Target folder is {}", &target_folder);
 
                 // 버퍼를 MP4 파일로 내보낸다.

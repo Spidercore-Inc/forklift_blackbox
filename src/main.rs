@@ -1,5 +1,6 @@
 use fakesink_handler::fakesink_handler;
 use gstreamer::prelude::*;
+use gstreamer::Pipeline;
 
 use iced::{executor, Application, Theme};
 use iced::widget::{container, column, row, text, image::{Image, Handle}, progress_bar, space};
@@ -139,21 +140,26 @@ impl iced::Application for BlackBox {
         gstreamer::init().unwrap();
         let pipeline = pipe_builder();
 
-        // FakeSink Handoff Handler 생성
-        let fakesink = pipeline.by_name("fakesink").expect("fakesink element not found");
+        let mut fakesink_list: Vec<Pipeline> = vec![];
 
-        // 동영상 담을 프레임 버퍼
-        let frame_buffer_clone = Arc::clone(&frame_buffer);
-        let end_timestamp_clone = Arc::clone(&end_timestamp);
-        let condvar_clone = Arc::clone(&m_condvar);
-        let record = Arc::new(Mutex::new(false));
-        let record_clone = Arc::clone(&record);
+        for i in 0..4 {
+            let name = format!("fakesink_{}", i);
+            
+            // FakeSink Handoff Handler 생성
+            let fakesink = pipeline.by_name(&name).expect("fakesink element not found");
 
-        fakesink.connect("handoff", false, move |value| {
-            // 버퍼 처리
-            fakesink_handler(value, &frame_buffer_clone, &end_timestamp_clone, &condvar_clone, &record_clone)
-        });
+            // 동영상 담을 프레임 버퍼
+            let frame_buffer_clone = Arc::clone(&frame_buffer);
+            let end_timestamp_clone = Arc::clone(&end_timestamp);
+            let condvar_clone = Arc::clone(&m_condvar);
+            let record = Arc::new(Mutex::new(true));
+            let record_clone = Arc::clone(&record);
 
+            fakesink.connect("handoff", false, move |value| {
+                // 버퍼 처리
+                fakesink_handler(value, &frame_buffer_clone, &end_timestamp_clone, &condvar_clone, &record_clone)
+            });
+        }
 
         (
             Self {
