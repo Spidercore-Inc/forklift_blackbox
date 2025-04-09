@@ -3,10 +3,12 @@ use std::sync::{Arc, Condvar, Mutex, RwLock};
 use chrono::{Utc, DateTime};
 use gstreamer::buffer;
 use gstreamer::glib::Value;
+use tokio::sync::mpsc;
 
 use log::debug;
 
 use crate::logger::errorlog;
+use crate::SubEvent;
 
 // Fakesink에서 프레임 가져와 처리
 pub fn fakesink_handler (
@@ -14,11 +16,17 @@ pub fn fakesink_handler (
     frame_buffer_mutex: &Arc<Mutex<VecDeque<buffer::Buffer>>>,
     end_timestamp_rw: &Arc<RwLock<DateTime<Utc>>>,
     condvar: &Arc<Condvar>,
-    record_mutex: &Arc<Mutex<bool>>
+    record_mutex: &Arc<Mutex<bool>>,
+    pipe_tx: &Arc<Mutex<mpsc::UnboundedSender<SubEvent>>>
 ) -> Option<Value> {
     let mut timestamp = end_timestamp_rw.write().unwrap_or_else(|e| errorlog("Failed to Overwrite End Timestamp", Some(e)));
     *timestamp = Utc::now();
     drop(timestamp);
+
+    let sender = pipe_tx.lock().expect("Failed to lock pipe tx");
+    sender.send(SubEvent::PipeRunning).expect("Failed to send Pipe Running Signal");
+    drop(sender);
+    log::info!("### PipeRunning Sent ###");
 
     let mut record = record_mutex.lock().unwrap_or_else(|e| errorlog("Failed to lock RECORD", Some(e)));
     let buffer = values[1].get::<gstreamer::Buffer>().unwrap_or_else(|e| errorlog("Failed to get buffer from handoff signal", Some(e)));

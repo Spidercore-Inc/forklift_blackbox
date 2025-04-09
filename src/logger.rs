@@ -16,7 +16,7 @@ pub fn errorlog<E>(explanation: &str,error: Option<E>) -> ! where E: std::fmt::D
 
 pub fn init_logger() {
     // 로그 경로 설정
-    let log_dir = std::env::var("LOGDIR").unwrap_or_else(|_| "/var/log/spidercore/objectDetector".to_string()).trim().to_string();
+    let log_dir = std::env::var("LOGDIR").unwrap_or_else(|_| "/var/log/spidercore/blackbox".to_string()).trim().to_string();
 
     // 로그 환경 세팅 & 시간 지난 로그 삭제
     let today = chrono::Utc::now();

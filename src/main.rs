@@ -139,11 +139,12 @@ impl iced::Application for BlackBox {
         // 파이프라인 생성
         gstreamer::init().unwrap();
         let pipeline = pipe_builder();
+        log::info!("### Pipeline built ###");
 
-        let mut fakesink_list: Vec<Pipeline> = vec![];
-
+        // 4개의 fakesink 생성 및 연결
         for i in 0..4 {
             let name = format!("fakesink_{}", i);
+            log::info!("{}", &name);
             
             // FakeSink Handoff Handler 생성
             let fakesink = pipeline.by_name(&name).expect("fakesink element not found");
@@ -152,13 +153,15 @@ impl iced::Application for BlackBox {
             let frame_buffer_clone = Arc::clone(&frame_buffer);
             let end_timestamp_clone = Arc::clone(&end_timestamp);
             let condvar_clone = Arc::clone(&m_condvar);
-            let record = Arc::new(Mutex::new(true));
+            let record = Arc::new(Mutex::new(false));
             let record_clone = Arc::clone(&record);
+            let pipe_tx_clone = Arc::clone(&mpsc_tx);
 
             fakesink.connect("handoff", false, move |value| {
                 // 버퍼 처리
-                fakesink_handler(value, &frame_buffer_clone, &end_timestamp_clone, &condvar_clone, &record_clone)
+                fakesink_handler(value, &frame_buffer_clone, &end_timestamp_clone, &condvar_clone, &record_clone, &pipe_tx_clone)
             });
+            log::info!("### fakesink {} connected ###", i);
         }
 
         (
@@ -181,6 +184,7 @@ impl iced::Application for BlackBox {
             // SD 카드 삽입이 확인되었을 때
             Message::SDInserted => {
                 println!("iced: Received Message::SDInserted");
+                log::info!("iced: Received Message::SDInserted");
                 self.state_message = "SD Card Insertion Detected!".to_owned();
 
                 // 로컬에 저장하고 있던 Recorder를 멈춘다.
@@ -194,6 +198,7 @@ impl iced::Application for BlackBox {
             Message::SDFormatChecked(fs_type) => {
                 // 포맷 방식에 따라서 마운트를 하거나 SD를 초기화한다.
                 println!("iced: Received Message::SDFormatChecked");
+                log::info!("iced: Received Message::SDFormatChecked. SD format: {}", fs_type);
                 println!("SD format: {}", fs_type);
                 if ["ext4", "exfat", "vfat"].contains(&fs_type.as_str()) {
                     // 원하는 포맷 방식이면 마운트 처리하고 저장소를 SD로 바꾼다.
@@ -215,6 +220,7 @@ impl iced::Application for BlackBox {
             // SD 카드가 제거되었을 때
             Message::SDRemoved => {
                 println!("iced: Received Message::SDRemoved");
+                log::info!("iced: Received Message::SDRemoved");
                 self.state_message = "SD Card is removed!".to_owned();
                 // 우선 Recorder를 멈춘다.
                 self.change_recorder_state(RecorderState::Stop);
@@ -250,11 +256,13 @@ impl iced::Application for BlackBox {
             // Recorder 상태 변화
             Message::RecorderStarted => {
                 println!("iced: Received Recorder Started Event");
+                log::info!("iced: Received Recorder Started Event");
                 self.is_recording = true;
                 self.state_message = "▶️    Recording!".to_owned();
             }
             Message::RecorderStopped => {
                 println!("iced: Received Recorder Stopped Event");
+                log::info!("iced: Received Recorder Stopped Event");
                 self.is_recording = false;
                 self.state_message = "🛑    Recording Stopped!".to_owned();
 
@@ -262,6 +270,7 @@ impl iced::Application for BlackBox {
                 if self.is_wating_to_record {
                     self.is_wating_to_record = false;
                     let target_device = self.storage.target;
+                    log::info!("### Waiting for record ... Now change the state");
                     self.change_recorder_state(RecorderState::Record(target_device));
                 }
             }
@@ -410,6 +419,7 @@ impl BlackBox {
         let mut state = lock.lock().expect("Failed to lock state from Iced");
         *state = new_state.clone();
         cvar.notify_one();
+        log::info!("\n###### cvar notified : {:?} #####", new_state.clone());
         println!("iced: Sent recorder change signal to the recorder - {:?}", new_state);
         drop(state);
     }
