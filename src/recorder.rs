@@ -21,7 +21,7 @@ const ENCODER: &str = "appsrc name=appsrc ! video/x-raw, format=I420, width=1280
 
 pub fn pipe_builder() -> Pipeline {
     let setting = SETTING.replace("\\", "").replace("\n", "").replace("\"", "");
-    debug!("== PipeLine ==\n{}\n", setting);
+    log::debug!("== PipeLine ==\n{}\n", setting);
     let pipeline = gstreamer::parse::launch(&setting).unwrap_or_else(|e| errorlog("Failed to parse pipeline setting", Some(e)));
     pipeline.dynamic_cast::<gstreamer::Pipeline>().unwrap_or_else(|e| errorlog("Failed to cast element to pipeline", Some(e)))
 }
@@ -46,15 +46,15 @@ fn buffer_to_mp4(buffers: VecDeque<gstreamer::Buffer>, target_folder: &str) {
     // 인코딩 실행
     info!("\n********* Start Encoder Pipeline *********\n");
     encoder.set_state(gstreamer::State::Playing).unwrap_or_else(|e| { error!("Encoder failed to play: {}", e); panic!("Failed on encoder") });
-
-    // 900번째 프레임 이미지 추출
+    /*
+    // 600번째 프레임 이미지 추출
     let caps = gstreamer::Caps::builder("vidoe/x-raw")
         .field("format", &"I420")
         .field("width", &1280)
         .field("height", &720)
         .build();
-    let info = gstreamer_video::VideoInfo::from_caps(&caps).unwrap_or_else(|e| errorlog("Failed to get Video Info", Some(e)));
-
+    //let info = gstreamer_video::VideoInfo::from_caps(&caps).unwrap_or_else(|e| errorlog("Failed to get Video Info", Some(e)));
+    */
     // 버퍼를 appsrc에 넣기
     for buffer in buffers {
         appsrc.push_buffer(buffer).unwrap_or_else(|e| errorlog("Failed to put buffers into appsrc", Some(e)));
@@ -112,7 +112,12 @@ fn buffer_to_mp4(buffers: VecDeque<gstreamer::Buffer>, target_folder: &str) {
     info!("\n********* Ended File Writing *********\n");
 }
 
-pub fn encoder_thread(pipe_tx: &Arc<Mutex<mpsc::UnboundedSender<SubEvent>>> ,frame_buffer_mutex: &Arc<Mutex<VecDeque<buffer::Buffer>>>, end_timestamp: &Arc<RwLock<DateTime<Utc>>>, r_condvar: Arc<(Mutex<RecorderState>, Condvar)>, m_condvar: &Arc<Condvar>) {
+pub fn encoder_thread(
+    pipe_tx: &Arc<Mutex<mpsc::UnboundedSender<SubEvent>>>,
+    frame_buffer_mutex: &Arc<Mutex<VecDeque<buffer::Buffer>>>, 
+    end_timestamp: &Arc<RwLock<DateTime<Utc>>>, 
+    r_condvar: Arc<(Mutex<RecorderState>, Condvar)>, 
+    m_condvar: &Arc<Condvar>) {
     // Panic 핸들러 추가
     setup_panic_hook();
 
@@ -123,6 +128,7 @@ pub fn encoder_thread(pipe_tx: &Arc<Mutex<mpsc::UnboundedSender<SubEvent>>> ,fra
     loop {
         let mut state = state_mutex.lock().expect("Failed to lock state in recorder");
         while is_state_same(&my_last_state, &state) {
+            info!("Checking State... {:?} {:?}", my_last_state, state);
             state = cvar.wait(state).expect("Failed to get Condvar from recorder");
         }
         my_last_state = (*state).clone();
@@ -130,6 +136,7 @@ pub fn encoder_thread(pipe_tx: &Arc<Mutex<mpsc::UnboundedSender<SubEvent>>> ,fra
         match my_last_state {
             RecorderState::Record(device) => {
                 println!("Recorder: Received Start Event with device {}", if device == Device::SD { "sd" } else { "local" });
+                log::info!("Recorder: Received Start Event with device");
                 let save_dir = match device {
                     Device::SD => SD_WORKDIR,
                     Device::Local => LOCAL_WORKDIR,
@@ -138,7 +145,7 @@ pub fn encoder_thread(pipe_tx: &Arc<Mutex<mpsc::UnboundedSender<SubEvent>>> ,fra
                 // 데이터 받을 때까지 대기하는 부분
                 let mut frame_buffer = frame_buffer_mutex.lock().unwrap_or_else(|e| errorlog("Failed to lock frame buffer in encoder", Some(e)));
 
-                while frame_buffer.len() < 900 {
+                while frame_buffer.len() < 600 {
                     frame_buffer = m_condvar.wait(frame_buffer).unwrap_or_else(|e| errorlog("condvar wait failed in encoder", Some(e)));
                 }
 

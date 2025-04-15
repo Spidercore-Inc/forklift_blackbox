@@ -1,4 +1,3 @@
-use fakesink_handler::fakesink_handler;
 use gstreamer::prelude::*;
 use gstreamer::Pipeline;
 
@@ -6,21 +5,20 @@ use iced::{executor, Application, Theme};
 use iced::widget::{container, column, row, text, image::{Image, Handle}, progress_bar, space};
 use recorder::{encoder_thread, pipe_builder, RecorderState};
 use tokio::sync::mpsc;
+use log::{debug, error};
 use std::collections::VecDeque;
 use std::sync::RwLock;
 use std::{thread, cell::RefCell, sync::{Arc, Mutex, Condvar}};
+use std::time::{Duration, Instant};
 
 mod fakesink_handler;
+mod utils;
+mod notifier;
+mod recorder;
+use {fakesink_handler::*, utils::*, notifier::*, recorder::*};
+
 mod logger;
 use logger::{errorlog, init_logger, setup_panic_hook};
-
-mod utils;
-use utils::*;
-
-mod notifier;
-use notifier::*;
-
-mod recorder;
 
 // 설정값
 const LOCAL_WORKDIR: &str = "/home/team3/blackbox";
@@ -123,46 +121,175 @@ impl iced::Application for BlackBox {
             sd_change_notifier(sd_tx);
         });
 
-        // Recorder 관련된 스레드 생성
+        ////////////////////////////////////////////
+        // ****** Recorder 관련된 파라미터 생성 ****** //
+        ////////////////////////////////////////////
+        // State Condvar
         let r_condvar = Arc::new((Mutex::new(RecorderState::Stop), Condvar::new()));
-        let m_condvar = Arc::new(Condvar::new());
+        // Frame buffer Condvar
+        let fb_condvar_0 = Arc::new(Condvar::new());
+        let fb_condvar_1 = Arc::new(Condvar::new());
+        let fb_condvar_2 = Arc::new(Condvar::new());
+        let fb_condvar_3 = Arc::new(Condvar::new());
+        // MPSC TX (메인 스레드에 상태 전당)
         let recorder_tx = Arc::clone(&mpsc_tx);
-        let frame_buffer = Arc::new(Mutex::new(VecDeque::<gstreamer::Buffer>::new()));
+        // frame buffer 4개
+        let frame_buffer_0 = Arc::new(Mutex::new(VecDeque::<gstreamer::Buffer>::new()));
+        let frame_buffer_1 = Arc::new(Mutex::new(VecDeque::<gstreamer::Buffer>::new()));
+        let frame_buffer_2 = Arc::new(Mutex::new(VecDeque::<gstreamer::Buffer>::new()));
+        let frame_buffer_3 = Arc::new(Mutex::new(VecDeque::<gstreamer::Buffer>::new()));
+        // 타임스탬프
         let end_timestamp = Arc::new(RwLock::new(chrono::Utc::now()));
+        // 프레임 관리용 4개 프레임번호와 리스트
+        let frame_num_0 = Arc::new(RwLock::new(0));
+        let frame_num_1 = Arc::new(RwLock::new(0));
+        let frame_num_2 = Arc::new(RwLock::new(0));
+        let frame_num_3 = Arc::new(RwLock::new(0));
 
-        let r_cd_clone = Arc::clone(&r_condvar);
-        let m_cd_clone = Arc::clone(&m_condvar);
-        let fb_clone = Arc::clone(&frame_buffer);
+        ////////////////////////////////////
+        // ****** Clone 파라미터 생성 ****** //
+        ////////////////////////////////////
+        let r_cdvar_clone = Arc::clone(&r_condvar);
+
+        let fb_cdvar_clone_0 = Arc::clone(&fb_condvar_0);
+        let fb_cdvar_clone_1 = Arc::clone(&fb_condvar_1);
+        let fb_cdvar_clone_2 = Arc::clone(&fb_condvar_2);
+        let fb_cdvar_clone_3 = Arc::clone(&fb_condvar_3);
+
+        let fb_clone_0 = Arc::clone(&frame_buffer_0);
+        let fb_clone_1 = Arc::clone(&frame_buffer_1);
+        let fb_clone_2 = Arc::clone(&frame_buffer_2);
+        let fb_clone_3 = Arc::clone(&frame_buffer_3);
+
         let et_clone = Arc::clone(&end_timestamp);
-        thread::spawn(move || encoder_thread(&recorder_tx, &fb_clone, &et_clone, r_cd_clone, &m_cd_clone));
+
+        let fn_clone_0 = Arc::clone(&frame_num_0);
+        let fn_clone_1 = Arc::clone(&frame_num_1);
+        let fn_clone_2 = Arc::clone(&frame_num_2);
+        let fn_clone_3 = Arc::clone(&frame_num_3);
+
+        ///////////////////////////
+        // ****** Vec 생성 ****** //
+        ///////////////////////////
+        // Fakesink Vec
+        let mut fakesink_list = vec![];
+        // Frame buffer Vec
+        let frame_buffer_list: Vec<Arc<Mutex<VecDeque<gstreamer::Buffer>>>> = vec![fb_clone_0, fb_clone_1, fb_clone_2, fb_clone_3];
+        // Frame Number Vec
+        let frame_num_list: Vec<Arc<RwLock<i32>>> = vec![fn_clone_0, fn_clone_1, fn_clone_2, fn_clone_3];
+        // Frame Buffer Condvar Vec
+        let fb_condvar_list = vec![fb_cdvar_clone_0, fb_cdvar_clone_1, fb_cdvar_clone_2, fb_cdvar_clone_3];
+
+        ///////////////////////////////////////////
+        // ****** 4개의 Encoder Thread 생성 ****** //
+        ///////////////////////////////////////////
+        let frame_buffer_clone = Arc::clone(&frame_buffer_list[0]);
+        let fb_condvar_clone = Arc::clone(&fb_condvar_list[0]);
+        thread::spawn(move || encoder_thread(&recorder_tx, &frame_buffer_clone, &et_clone, r_cdvar_clone, &fb_condvar_clone));
+        /*
+        for i in 0..4 {
+            let pipe_tx_clone = Arc::clone(&recorder_tx);
+            let frame_buffer_clone = Arc::clone(&frame_buffer_list[i]);
+            let r_condvar_clone = Arc::clone(&r_condvar);
+            let fb_condvar_clone = Arc::clone(&fb_condvar_list[i]);
+            let end_timestamp_clone = Arc::clone(&end_timestamp);
+
+            thread::spawn(move || encoder_thread(&pipe_tx_clone, &frame_buffer_clone, &end_timestamp_clone, r_condvar_clone, &fb_condvar_clone));
+        }
+        */
 
         // 파이프라인 생성
         gstreamer::init().unwrap();
         let pipeline = pipe_builder();
         log::info!("### Pipeline built ###");
 
+
         // 4개의 fakesink 생성 및 연결
         for i in 0..4 {
             let name = format!("fakesink_{}", i);
             log::info!("{}", &name);
+
+            // 성능 측정용
+            let probe_count = Arc::new(Mutex::new(0));
+            let timer = Arc::new(Mutex::new(Instant::now()));
+
+            let counter = Arc::clone(&probe_count);
+            let timer_clone = Arc::clone(&timer);
             
             // FakeSink Handoff Handler 생성
             let fakesink = pipeline.by_name(&name).expect("fakesink element not found");
-
+            let _ = &fakesink_list.push(fakesink);
+            
             // 동영상 담을 프레임 버퍼
-            let frame_buffer_clone = Arc::clone(&frame_buffer);
+            let frame_buffer_clone = Arc::clone(&frame_buffer_list[i]);
             let end_timestamp_clone = Arc::clone(&end_timestamp);
-            let condvar_clone = Arc::clone(&m_condvar);
+            let condvar_clone = Arc::clone(&fb_condvar_list[i]);
             let record = Arc::new(Mutex::new(false));
             let record_clone = Arc::clone(&record);
-            let pipe_tx_clone = Arc::clone(&mpsc_tx);
 
-            fakesink.connect("handoff", false, move |value| {
+            let frame_num_clone = Arc::clone(&frame_num_list[i]);
+            //let pipe_tx_clone = Arc::clone(&mpsc_tx);
+            //log::info!("###fake {} end timestamp clone :: {:?}", i, end_timestamp_clone);
+            //log::info!("###fake {} condvar_clone :: {:?}", i, condvar_clone);
+            //log::info!("###fake {} record_clone :: {:?}", i, record_clone);
+            //log::info!("###fake {} pipe_tx_clone :: {:?}", i, pipe_tx_clone);
+
+            let _ = &fakesink_list[i].connect("handoff", false, move |value| {
+                //log::info!("### Connect to fakesink handler {} ###", i);
+                ///////////////////////////////
+                // ****** FPS 측정 코드 ****** //
+                ///////////////////////////////
+                let mut frame_count = counter.lock().unwrap_or_else(|e| errorlog("Failed to lock mutex in fakeSink Handoff - frame_count: ", Some(e)));
+                let mut last_time = timer_clone.lock().unwrap_or_else(|e| errorlog("Failed to lock mutex in fakeSink Handoff - last_time: ", Some(e)));
+                *frame_count += 1;
+        
+                let a = *last_time;
+
+                let elapsed = a.elapsed();
+                if elapsed >= Duration::from_secs(1) {
+                    let fps = *frame_count as f64 / elapsed.as_secs_f64();
+                    debug!("\n\nFPS: {:.2}\n\n", fps);
+
+                    *frame_count = 0;
+                    *last_time = Instant::now();
+                }
+
+                {
+                    let mut frame_number_count = frame_num_clone.write().unwrap_or_else(|e| errorlog("Failed to write in fakeSink Handoff - frame_number_count", Some(e)));
+                    *frame_number_count += 1;
+                }
                 // 버퍼 처리
-                fakesink_handler(value, &frame_buffer_clone, &end_timestamp_clone, &condvar_clone, &record_clone, &pipe_tx_clone)
+                fakesink_handler(value, &frame_buffer_clone, &end_timestamp_clone, &condvar_clone, &record_clone, &frame_num_clone)
             });
-            log::info!("### fakesink {} connected ###", i);
         }
+
+        log::info!("##### fakesink list length: {}", &fakesink_list.len());
+
+        pipeline.set_state(gstreamer::State::Playing).unwrap_or_else(|e| errorlog("Unable to set the pipeline to the Playing state", Some(e)));
+
+        // Wait until error or EOS
+        let bus = pipeline.bus().unwrap();
+        for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
+            use gstreamer::MessageView;
+
+            match msg.view() {
+                MessageView::Error(err) => {
+                    error!(
+                        "Error received from element {:?}: {}",
+                        err.src().map(|s| s.path_string()),
+                        err.error()
+                    );
+                    error!("Debugging information: {:?}", err.debug());
+                    break;
+                }
+                MessageView::Eos(..) => break,
+                _ => (),
+            }
+        }
+
+        pipeline
+            .set_state(gstreamer::State::Null)
+            .unwrap_or_else(|e| errorlog("Unable to set the pipeline to the `Null` state",Some(e)));
 
         (
             Self {
