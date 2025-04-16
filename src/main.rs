@@ -183,10 +183,10 @@ impl iced::Application for BlackBox {
         ///////////////////////////////////////////
         // ****** 4개의 Encoder Thread 생성 ****** //
         ///////////////////////////////////////////
-        let frame_buffer_clone = Arc::clone(&frame_buffer_list[0]);
-        let fb_condvar_clone = Arc::clone(&fb_condvar_list[0]);
-        thread::spawn(move || encoder_thread(&recorder_tx, &frame_buffer_clone, &et_clone, r_cdvar_clone, &fb_condvar_clone));
-        /*
+        //let frame_buffer_clone = Arc::clone(&frame_buffer_list[0]);
+        //let fb_condvar_clone = Arc::clone(&fb_condvar_list[0]);
+        //thread::spawn(move || encoder_thread(&recorder_tx, &frame_buffer_clone, &et_clone, r_cdvar_clone, &fb_condvar_clone));
+        
         for i in 0..4 {
             let pipe_tx_clone = Arc::clone(&recorder_tx);
             let frame_buffer_clone = Arc::clone(&frame_buffer_list[i]);
@@ -194,9 +194,11 @@ impl iced::Application for BlackBox {
             let fb_condvar_clone = Arc::clone(&fb_condvar_list[i]);
             let end_timestamp_clone = Arc::clone(&end_timestamp);
 
-            thread::spawn(move || encoder_thread(&pipe_tx_clone, &frame_buffer_clone, &end_timestamp_clone, r_condvar_clone, &fb_condvar_clone));
+            let thread_num = i as i32;
+
+            thread::spawn(move || encoder_thread(&pipe_tx_clone, &frame_buffer_clone, &end_timestamp_clone, r_condvar_clone, &fb_condvar_clone, &thread_num));
         }
-        */
+        
 
         // 파이프라인 생성
         gstreamer::init().unwrap();
@@ -248,7 +250,7 @@ impl iced::Application for BlackBox {
                 let elapsed = a.elapsed();
                 if elapsed >= Duration::from_secs(1) {
                     let fps = *frame_count as f64 / elapsed.as_secs_f64();
-                    debug!("\n\nFPS: {:.2}\n\n", fps);
+                    //debug!("\n\nFPS: {:.2}\n\n", fps);
 
                     *frame_count = 0;
                     *last_time = Instant::now();

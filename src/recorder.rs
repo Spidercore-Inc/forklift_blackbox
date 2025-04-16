@@ -17,7 +17,7 @@ use crate::LOCAL_WORKDIR;
 use crate::SD_WORKDIR;
 
 const SETTING: &str = include_str!("./settings");
-const ENCODER: &str = "appsrc name=appsrc ! video/x-raw, format=I420, width=1280, height=720, framerate=30/1 ! nvvideoconvert name=convert ! video/x-raw(memory:NVMM), format=I420, width=1280, height=720 ! nvv4l2h264enc name=enc ! h264parse name=parse ! mp4mux name=mux trak-timescale=10 ! filesink name=filesink location=";
+const ENCODER: &str = "appsrc name=appsrc ! video/x-raw, format=I420, width=1280, height=720, framerate=10/1 ! nvvideoconvert name=convert ! video/x-raw(memory:NVMM), format=I420, width=1280, height=720 ! nvv4l2h264enc name=enc ! h264parse name=parse ! mp4mux name=mux trak-timescale=10 ! filesink name=filesink location=";
 
 pub fn pipe_builder() -> Pipeline {
     let setting = SETTING.replace("\\", "").replace("\n", "").replace("\"", "");
@@ -27,18 +27,21 @@ pub fn pipe_builder() -> Pipeline {
 }
 
 // 영상 인코딩 파이프라인 제작 함수
-fn build_encoder_pipeline(target_folder: &str) -> gstreamer::Pipeline {
+fn build_encoder_pipeline(target_folder: &str, timestamp: &str) -> gstreamer::Pipeline {
     // 파이프라인 생성
-    let pipeline = gstreamer::parse::launch(&(ENCODER.to_owned() + target_folder + "/temp.mp4")).unwrap_or_else(|e| errorlog("Failed to parse encoder pipeline", Some(e)));
+    let pipeline = gstreamer::parse::launch(&(ENCODER.to_owned() + target_folder + "/" + timestamp + ".mp4")).unwrap_or_else(|e| errorlog("Failed to parse encoder pipeline", Some(e)));
     pipeline.dynamic_cast::<gstreamer::Pipeline>().unwrap_or_else(|e| errorlog("Failed to dynamic cast encoder", Some(e)))
 }
 
 // 추출한 버퍼를 H.264 MP4로 저장 함수
-fn buffer_to_mp4(buffers: VecDeque<gstreamer::Buffer>, target_folder: &str) {
+fn buffer_to_mp4(
+    buffers: VecDeque<gstreamer::Buffer>, 
+    target_folder: &str,
+    timestamp: &str ) {
     // 폴더 생성
     std::fs::create_dir_all(std::path::Path::new(target_folder)).unwrap_or_else(|e| errorlog("Failed to create target", Some(e)));
 
-    let encoder = build_encoder_pipeline(target_folder);
+    let encoder = build_encoder_pipeline(target_folder, timestamp);
 
     // Pipeline에서 appsrc부터 찾기
     let appsrc = encoder.by_name("appsrc").expect("Failed to find appsrc from Encoder").dynamic_cast::<gstreamer_app::AppSrc>().expect("Failed to dynamic cast Encoder");
@@ -64,14 +67,14 @@ fn buffer_to_mp4(buffers: VecDeque<gstreamer::Buffer>, target_folder: &str) {
     appsrc.end_of_stream().unwrap_or_else(|e| errorlog("Failed to send EOS to appsrc", Some(e)));
 
     // mp4 파일 포맷 변환 후 저장
-    let temp_path = format!("{}{}", target_folder, "/temp.mp4");
-    let video_path = format!("{}{}", target_folder, "/video.mp4");
+    let temp_path = format!("{}/{}.mp4", target_folder, timestamp);
+    let video_path = format!("{}/{}.mp4", target_folder, timestamp);
     let output = Command::new("ffmpeg").arg("-i").arg(&temp_path.to_string()).arg("-c:v").arg("h264_nvmpi").arg("-pix_fmt").arg("yuv420p").arg("-preset").arg("fast").arg(&video_path.to_string()).output().unwrap_or_else(|e| errorlog("Failed to excute ffmpeg", Some(e)));
 
     if !output.status.success() {
         error!("ffmpeg failed: {}", String::from_utf8_lossy(&output.stderr));
     } else {
-        info!("\n30/1 Video saved successfully! - location: {}\n", &video_path.to_string());
+        info!("\n10/1 Video saved successfully! - location: {}\n", &video_path.to_string());
     }
 
     // Wait until error or EOS
@@ -105,7 +108,7 @@ fn buffer_to_mp4(buffers: VecDeque<gstreamer::Buffer>, target_folder: &str) {
 
     if error_found { panic!("Error Found in sub thread!") }
 
-    info!("30/1 FPS Video has been saved");
+    info!("10/1 FPS Video has been saved");
 
     OpenOptions::new().create(true).write(true).open(&(target_folder.to_string() + "/.DONE")).expect("Failed to touch DONE");
 
@@ -117,22 +120,26 @@ pub fn encoder_thread(
     frame_buffer_mutex: &Arc<Mutex<VecDeque<buffer::Buffer>>>, 
     end_timestamp: &Arc<RwLock<DateTime<Utc>>>, 
     r_condvar: Arc<(Mutex<RecorderState>, Condvar)>, 
-    m_condvar: &Arc<Condvar>) {
+    m_condvar: &Arc<Condvar>,
+    thread_num: &i32) {
     // Panic 핸들러 추가
     setup_panic_hook();
 
     // Condvar 관련
-    let (state_mutex, cvar) = &*r_condvar;
-    let mut my_last_state = RecorderState::Stop;
+    //let (state_mutex, cvar) = &*r_condvar;
+    let my_last_state = RecorderState::Record(Device::SD);
+    let folder_name = format!("camera_{}", thread_num);
 
     loop {
-        let mut state = state_mutex.lock().expect("Failed to lock state in recorder");
+        //let mut state = state_mutex.lock().expect("Failed to lock state in recorder");
+        /* 
         while is_state_same(&my_last_state, &state) {
             info!("Checking State... {:?} {:?}", my_last_state, state);
             state = cvar.wait(state).expect("Failed to get Condvar from recorder");
         }
-        my_last_state = (*state).clone();
-        drop(state);
+        */
+        //my_last_state = (*state).clone();
+        //drop(state);
         match my_last_state {
             RecorderState::Record(device) => {
                 println!("Recorder: Received Start Event with device {}", if device == Device::SD { "sd" } else { "local" });
@@ -162,11 +169,11 @@ pub fn encoder_thread(
                 let timestamp = start_time.timestamp_millis().to_string();
 
                 // 파일 저장 경로: <workingDir>/<timestamp>/video.mp4
-                let target_folder = format!("{}/{}", save_dir, &timestamp);
-                info!("SubThread: Target folder is {}", &target_folder);
+                let target_folder = format!("{}/{}", save_dir, &folder_name);
+                //info!("SubThread: Target folder is {}", &folder_name);
 
                 // 버퍼를 MP4 파일로 내보낸다.
-                buffer_to_mp4(frame_buffer_copy, &target_folder);
+                buffer_to_mp4(frame_buffer_copy, &target_folder, &timestamp);
 
                 // 메인 쓰레드에 상태 전달
                 let sender = pipe_tx.lock().expect("Failed to lock pipe tx");
