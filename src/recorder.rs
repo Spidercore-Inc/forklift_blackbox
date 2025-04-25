@@ -10,6 +10,7 @@ use chrono::{DateTime, Duration, Utc};
 use log::{debug, error, info};
 
 use crate::utils::create_folder_if_not_exists;
+use crate::utils::remove_old_files;
 use crate::utils::Device;
 use crate::SubEvent;
 use crate::logger::{errorlog, setup_panic_hook};
@@ -148,6 +149,9 @@ pub fn encoder_thread(
                     Device::SD => SD_WORKDIR,
                     Device::Local => LOCAL_WORKDIR,
                 };
+
+                // 남은 용량 체크
+                remove_old_files(device);
 
                 // 데이터 받을 때까지 대기하는 부분
                 let mut frame_buffer = frame_buffer_mutex.lock().unwrap_or_else(|e| errorlog("Failed to lock frame buffer in encoder", Some(e)));
