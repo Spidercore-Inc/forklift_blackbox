@@ -150,7 +150,7 @@ pub fn encoder_thread(
                     Device::Local => LOCAL_WORKDIR,
                 };
 
-                // 남은 용량 체크
+                // 남은 용량 체크, 부족하면 삭제
                 remove_old_files(device);
 
                 // 데이터 받을 때까지 대기하는 부분

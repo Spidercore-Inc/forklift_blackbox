@@ -117,7 +117,6 @@ pub fn remove_old_files(target_disk: Device) {
         Device::SD => {"/media/sdcard"}
     };
 
-    let mut is_enough: bool = true;
     // 용량 비교를 위한 전체 디스크 확인
     let spaces = check_target_space(target_disk);
     // 남은 공간이 160000000 이상이면 ( 비디오 한개 40000000 가정 )
@@ -150,14 +149,14 @@ pub fn remove_old_files(target_disk: Device) {
                 x.file_name().unwrap_or_default().to_string_lossy().cmp(&y.file_name().unwrap_or_default().to_string_lossy())
             );
 
-            // 가장 오래된 파일 중 2개 삭제
+            // 가장 오래된 파일 중 3개 삭제
             let mut counter = 2;
             for video in video_list {
                 info!(" - Try to delete the video");
                 // 0KB 파일 섞였나 확인
                 let video_size = get_size(video.clone()).expect("Failed to get the video size");
                 std::fs::remove_file(video.clone()).expect("Failed to delete the video");
-                info!(" - Successfully delete he video");
+                info!(" - Successfully delete the video");
                 // 0KB 파일이 아닌 실제 파일을 지웠을 때에만 카운터 업데이트
                 // 비디오 파일 사이즈는 30000000 내외임
                 if video_size > 10000000 { counter = counter - 1 };

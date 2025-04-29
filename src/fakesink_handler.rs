@@ -36,7 +36,6 @@ pub fn fakesink_handler (
     let buffer = values[1].get::<gstreamer::Buffer>().unwrap_or_else(|e| errorlog("Failed to get buffer from handoff signal", Some(e)));
 
     let mut frame_buffer = frame_buffer_mutex.lock().unwrap_or_else(|e| errorlog("Failed to lock frame buffer", Some(e)));
-
     if frame_buffer.len() >= 600 {
         frame_buffer.pop_front();
     }
