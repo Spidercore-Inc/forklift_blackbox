@@ -1,0 +1,4 @@
+v4l2src device=/dev/video0 ! "video/x-raw, format=UYVY, width=1280, height=720, framerate=30/1" ! videoflip method=horizontal-flip ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink_0 signal-handoffs=true \
+v4l2src device=/dev/video1 ! "video/x-raw, format=UYVY, width=1280, height=720, framerate=30/1" ! videoflip method=horizontal-flip ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink_1 signal-handoffs=true \
+v4l2src device=/dev/video2 ! "video/x-raw, format=UYVY, width=1280, height=720, framerate=30/1" ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink_2 signal-handoffs=true \
+v4l2src device=/dev/video3 ! "video/x-raw, format=UYVY, width=1280, height=720, framerate=30/1" ! queue ! nvvideoconvert ! "video/x-raw, format=I420" ! fakesink name=fakesink_3 signal-handoffs=true
