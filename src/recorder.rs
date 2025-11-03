@@ -4,7 +4,7 @@ use gstreamer::buffer;
 use gstreamer_video::{VideoFrame, video_frame::Readable};
 use log::Record;
 use sysinfo::Disks;
-use std::{collections::VecDeque, fs::{File, OpenOptions}, io::Write, process::Command, sync::{Arc, Mutex, Condvar, LazyLock, RwLock}, fs};
+use std::{collections::VecDeque, fs::{File, OpenOptions}, io::Write, sync::{Arc, Mutex, Condvar, LazyLock, RwLock}, fs};
 use tokio::sync::mpsc;
 use chrono::{DateTime, Duration, Utc};
 use log::{debug, error, info};
@@ -18,7 +18,7 @@ use crate::LOCAL_WORKDIR;
 use crate::SD_WORKDIR;
 
 const SETTING: &str = include_str!("./settings");
-const ENCODER: &str = "appsrc name=appsrc ! video/x-raw, format=I420, width=1280, height=720, framerate=10/1 ! nvvideoconvert name=convert ! video/x-raw(memory:NVMM), format=I420, width=1280, height=720 ! nvv4l2h264enc name=enc ! h264parse name=parse ! mp4mux name=mux trak-timescale=10 ! filesink name=filesink location=";
+const ENCODER: &str = "appsrc name=appsrc ! video/x-raw, format=I420, width=1280, height=720, framerate=10/1 ! nvvideoconvert name=convert ! video/x-raw(memory:NVMM), format=I420, width=1280, height=720 ! nvv4l2h264enc name=enc bitrate=800000 ! h264parse name=parse ! mp4mux name=mux trak-timescale=10 ! filesink name=filesink location=";
 
 pub fn pipe_builder() -> Pipeline {
     let setting = SETTING.replace("\\", "").replace("\n", "").replace("\"", "");
@@ -66,17 +66,6 @@ fn buffer_to_mp4(
 
     // 종료 알리기
     appsrc.end_of_stream().unwrap_or_else(|e| errorlog("Failed to send EOS to appsrc", Some(e)));
-
-    // mp4 파일 포맷 변환 후 저장
-    let temp_path = format!("{}/{}.mp4", target_folder, timestamp);
-    let video_path = format!("{}/{}.mp4", target_folder, timestamp);
-    let output = Command::new("ffmpeg").arg("-i").arg(&temp_path.to_string()).arg("-c:v").arg("h264_nvmpi").arg("-pix_fmt").arg("yuv420p").arg("-preset").arg("fast").arg(&video_path.to_string()).output().unwrap_or_else(|e| errorlog("Failed to excute ffmpeg", Some(e)));
-
-    if !output.status.success() {
-        error!("ffmpeg failed: {}", String::from_utf8_lossy(&output.stderr));
-    } else {
-        info!("\n10/1 Video saved successfully! - location: {}\n", &video_path.to_string());
-    }
 
     // Wait until error or EOS
     let bus = encoder.bus().unwrap();
